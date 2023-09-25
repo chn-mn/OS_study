@@ -1,7 +1,0 @@
-test 1: [0;32mpassed[0m
-test 2: [0;31m2.out incorrect[0m
-  what results should be found in file: tests/2.out
-  what results produced by your program: tests-out/2.out
-  compare the two using diff, cmp, or related tools to debug, e.g.:
-  prompt> diff tests/2.out tests-out/2.out
-  See tests/2.run for what is being run
