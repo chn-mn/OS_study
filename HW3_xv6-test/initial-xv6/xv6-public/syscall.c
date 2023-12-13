@@ -104,6 +104,8 @@ extern int sys_wait(void);
 extern int sys_write(void);
 extern int sys_uptime(void);
 extern int sys_getreadcount(void);	// phase1
+extern int sys_getpinfo(void);			// phase2
+extern int sys_settickets(void);		// phase2
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,

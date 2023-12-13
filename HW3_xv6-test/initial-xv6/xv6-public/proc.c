@@ -6,6 +6,7 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
+#include "pstat.h"
 #define PHI 0x9e3779b9
 
 struct {
@@ -145,8 +146,12 @@ found:
   p->context = (struct context*)sp;
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
-
-  return p;
+  
+	// phase2 : for lottery scheduler, process start with having 10 tickets
+  p->tickets = 10;
+	p->ticks = 0;
+	p->inuse = 0;
+	return p;
 }
 
 //PAGEBREAK: 32
@@ -243,6 +248,11 @@ fork(void)
   np->cwd = idup(curproc->cwd);
 
   safestrcpy(np->name, curproc->name, sizeof(curproc->name));
+
+	// phase2: for lottery scheduler
+	np->tickets = curproc->tickets;
+	np->ticks = 0;
+	np->inuse = 0;
 
   pid = np->pid;
 
@@ -359,39 +369,62 @@ scheduler(void)
   struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
+	int ticketNum, winNum;
   
+	srand(1);
+
   for(;;){
     // Enable interrupts on this processor.
     sti();
 
-    // Loop over process table looking for process to run.
-    acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
+		ticketNum = 0;
+		
+		// get total ticket number
+		acquire(&ptable.lock);
+		for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->state != RUNNABLE || p-> inuse ==1)
         continue;
+			ticketNum += p->tickets;
+		}
+	
+		// Select winning ticket number
+		if((winNum = rand()) < 0) winNum = winNum * (-1);
+		winNum = winNum % ticketNum + 1;
 
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
+    // Loop over process table looking for process to run.
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->state != RUNNABLE || p->inuse == 1)
+        continue;
+			if(p->tickets < winNum){
+				winNum = winNum - p->tickets;
+				continue;
+			}
 
-      const int tickstarts = ticks;
 
-      swtch(&(c->scheduler), p->context);
-      switchkvm();
+	   	// Switch to chosen process.  It is the process's job
+    	// to release ptable.lock and then reacquire it
+    	// before jumping back to us.    
+			c->proc = p;
+    	switchuvm(p);
+    	p->state = RUNNING;
 
-      p->ticks += ticks - tickstarts;
+    	const int tickstarts = ticks;
 
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      c->proc = 0;
-    }
+    	swtch(&(c->scheduler), p->context);
+    	switchkvm();
+
+    	p->ticks += ticks - tickstarts;
+
+    	// Process is done running for now.
+    	// It should have changed its p->state before coming back.
+    	c->proc = 0;
+    	break;
+		}
     release(&ptable.lock);
 
   }
 }
+
 
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state. Saves and restores
@@ -570,3 +603,22 @@ procdump(void)
     cprintf("\n");
   }
 }
+
+// phase2 : to use ptable, sys_getpinfo() call getpinfo() at here
+int 
+getpinfo(struct pstat *pstate)
+{
+	struct proc* p;
+	int i = 0;
+
+	for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+		pstate->inuse[i]   = p->inuse;
+		pstate->tickets[i] = p->tickets;
+		pstate->pid[i]		 = p->pid;
+		pstate->ticks[i]	 = p->ticks;
+		i++;
+	}
+	
+	return 0;
+}
+

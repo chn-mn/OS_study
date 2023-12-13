@@ -1,0 +1,5 @@
+The "remote" target does not support "run".  Try "help target" or "continue".
+Continuing.
+[Inferior 1 (process 1) exited normally]
+Error while running hook_stop:
+No registers.
